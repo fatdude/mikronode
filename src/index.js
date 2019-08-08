@@ -71,12 +71,12 @@ class MikroNode {
  * @throws <strong>WARNING: If you do not listen for 'error' or 'timeout' events and one
  *            occurrs during the initial connection (host unreachable, connection refused,
  *            etc.), an "Unhandled 'error' event" exception will be thrown.</strong>
- * 
+ *
  * @example
- * 
+ *
  * <pre>
  * var MikroNode = require('mikronode');
- * 
+ *
  * var device1 = new MikroNode('192.168.88.1')
  * var device2 = new MikroNode('192.168.88.2')
  * var promise1 = Observable.fromPromise(device1.connect('admin', 'mypassword'));
@@ -97,7 +97,7 @@ class MikroNode {
  * , function(err)
  *     console.error('Error when connecting: ', err);
  *   });
- * 
+ *
  * </pre>
  */
     constructor(host,port=8728,timeout=5) {
@@ -158,37 +158,45 @@ class MikroNode {
 
         const close=()=>this.sock.getStream().sentence.complete();
 
-        const login=(user,password,cb)=>{
+        const login=(user,password,newMethod = false,cb)=>{
             this.debug>=DEBUG.DEBUG&&console.log('Logging in');
-            stream.write('/login');
-            const {promise,resolve,reject}=getUnwrappedPromise();
-            // Create a connection handler
-            this.connection=new Connection(
-                {...stream,close},
-                challenge=>{
-                    const md5=crypto.createHash('md5');
-                    md5.update(Buffer.concat([Buffer.from(nullString+password),Buffer.from(challenge)]));
-                    stream.write([
-                        "/login",
-                        "=name="+user,
-                        "=response=00"+md5.digest("hex")
-                    ]);
-                },{resolve,reject}
-            );
-            this.connection.setDebug(this.debug);
-            promise.then(()=>{
-                if (cb) cb(null,this.connection);
-            },err=>{
-                if (cb) cb(err,null);
-            });
-            return promise;
+			stream.write('/login');
+			const {promise,resolve,reject}=getUnwrappedPromise();
+			// Create a connection handler
+			this.connection=new Connection(
+				{...stream,close},
+				challenge=>{
+					if(newMethod){
+						stream.write([
+							"/login",
+							"=name="+user,
+							"=password="+password
+						]);
+					} else {
+						const md5=crypto.createHash('md5');
+						md5.update(Buffer.concat([Buffer.from(nullString+password),Buffer.from(challenge)]));
+						stream.write([
+							"/login",
+							"=name="+user,
+							"=response=00"+md5.digest("hex")
+						]);
+					}
+				},{resolve,reject}
+			);
+			this.connection.setDebug(this.debug);
+			promise.then(()=>{
+				if (cb) cb(null,this.connection);
+			},err=>{
+				if (cb) cb(err,null);
+			});
+			return promise;
         };
 
         this.debug>=DEBUG.SILLY&&console.log('Creating promise for socket connect');
         const promise = new Promise((resolve,reject) => {
             this.debug>=DEBUG.SILLY&&console.log('Connecting to remote host. Detected %s',net.isIPv6(this.host)?'ipv6':net.isIPv4(this.host)?'ipv4':'DNS lookup');
             const fn=((net.isIPv4(this.host)||net.isIPv6(this.host))?((this.socketOpts.family=net.isIPv6(this.host)?6:4),(a,b)=>b(null,[a])):((this.socketOpts.family==6)?dns.resolve4:dns.resolve6));
-            
+
             fn(this.host,(err,data)=>{
                 if (err) {
                     return reject("Host resolve error: ",err);
@@ -327,7 +335,7 @@ class SocketStream {
         // This will be called if there is no activity to the server.
         // If this occurs before the login is successful, it could be
         // that it is a connection timeout.
-        this.socket.setKeepAlive(true); 
+        this.socket.setKeepAlive(true);
         this.b=[];
         this.len=0;
         this.line='';
@@ -426,4 +434,3 @@ class SocketStream {
         this.socket.write(nullString);
     }
 }
-
